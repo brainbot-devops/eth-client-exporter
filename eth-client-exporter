@@ -84,11 +84,11 @@ METRICS = {
 }
 
 
-def ignore_httperror(self):
+def ignore_httperror(func):
     """Ignore HTTPErrors raised while requesting metrics."""
-    def wrapper(func):
+    def wrapper(*args):
         try:
-            return func(self)
+            return func(*args)
         except requests.HTTPError:
             return None
     return wrapper
@@ -98,7 +98,7 @@ class EthereumCollector:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.rpc = HTTPProvider(f'{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}')
+        self.rpc = HTTPProvider(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}')
         self.web3 = Web3(self.rpc)
 
     def collect(self):
@@ -122,11 +122,12 @@ class EthereumCollector:
 
         If the target is a parity client, we also record the number of active peers.
         """
-        connected = len(self.web3.admin.peers)
-        METRICS['eth_peers'].labels(PEER_STATE.CONNECTED).set(connected)
+        req = requests.post(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        peer_count_hex = req.json()['result']
+        METRICS['eth_peers'].labels(PEER_STATE.CONNECTED).set(len(peer_count_hex))
         # Parity exposes more granular data, see:
         #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
-        req = requests.post(f'{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        req = requests.post(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
         active = req.json()['result']['active']
         METRICS['eth_peers'].labels(PEER_STATE.ACTIVE).set(active)
 
@@ -146,7 +147,7 @@ class EthereumCollector:
     def collect_sync_block(self, block_type):
         """Collect the ID number of the given `block_type`'s block."""
         block = self.web3.eth.getBlock(block_identifier=block_type)
-        METRICS[f'eth_sync_block_{block_type}'].set(block)
+        METRICS[f'eth_sync_block_{block_type}'].set(block['number'])
 
     @ignore_httperror
     def collect_block_transactions(self, block_type):
@@ -171,11 +172,12 @@ class EthereumCollector:
 
 
 def serve_metrics():
+    collector = EthereumCollector()
     start_http_server(int(CLI_ARGS.metrics_port))
     while True:
         time.sleep(int(1))
+        collector.collect()
 
 
 if __name__ == '__main__':
-    REGISTRY.register(EthereumCollector())
     serve_metrics()
