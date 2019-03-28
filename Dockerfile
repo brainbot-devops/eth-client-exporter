@@ -11,4 +11,4 @@ WORKDIR /exporter
 
 EXPOSE 9999
 
-ENTRYPOINT /exporter/eth-client-exporter
+ENTRYPOINT ["/exporter/eth-client-exporter"]
