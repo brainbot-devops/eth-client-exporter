@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+
+import argparse
+import logging
+import time
+import os
+import sys
+import requests
+from web3 import Web3, RPCProvider
+from prometheus_client import write_to_textfile, start_http_server
+from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily
+
+log = logging.getLogger(__name__)
+logging.basicConfig(stream=sys.stdout, level=os.environ.get("LOGLEVEL", "WARNING"))
+
+settings = {}
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--target-ip', help='Host address of RPC interface to scrape from.', required=True)
+parser.add_argument('--target-port', help='Port of the host.', default=8545)
+parser.add_argument('--interval', help='Scrape interval.', default=1)
+parser.add_argument('--metrics-port', help="The port on which we'll serve our /metrics endpoint", default=9999)
+CLI_ARGS = parser.parse_args()
+
+
+"""
+Metrics Exposition:
+
+========================  ==========================
+Metric Name               Labels
+========================  ==========================  
+eth_peers                 [peer_state]
+------------------------  --------------------------
+eth_hashrate              []
+------------------------
+eth_gas_price
+------------------------
+eth_sync_block_pending
+------------------------
+eth_sync_block_earliest
+------------------------
+eth_sync_block_latest
+------------------------  --------------------------
+eth_block_transactions    [block_type]
+------------------------  --------------------------
+
+
+"""
+
+
+class PEER_STATE:
+    CONNECTED = 'connected'
+    ACTIVE = 'active'  # parity client only
+
+
+class BLOCK_TYPE:
+    EARLIEST = 'earliest'
+    PENDING = 'pending'
+    LATEST = 'latest'
+
+    @classmethod
+    def as_list(cls):
+        return [cls.EARLIEST, cls.PENDING, cls.LATEST]
+
+
+class LABELS:
+    PEER_STATE = PEER_STATE
+    BLOCK_TYPE = BLOCK_TYPE
+
+
+METRICS = {
+    'eth_peers': GaugeMetricFamily('eth_peers', 'The number of connected peers.', labelnames=['peer_state']),
+    'eth_hashrate': GaugeMetricFamily('eth_hashrate', 'The current hashrate of the network.'),
+    'eth_gas_price': GaugeMetricFamily('eth_gas_price', 'The current gas price of the network.'),
+    'eth_sync_block_earliest': CounterMetricFamily('eth_sync_block_earliest', 'The block at which import started'),
+    'eth_sync_block_pending': CounterMetricFamily('eth_sync_block_pending', 'The most recent block'),
+    'eth_sync_block_latest': CounterMetricFamily('eth_sync_block_latest', 'The estimated highest block.'),
+    'eth_block_transactions': GaugeMetricFamily('eth_block_transactions', 'Number of transactions in a block.', labelnames=['block_type']),
+    'eth_node_sync': CounterMetricFamily('eth_node_sync', 'Whether or not the node is syncing.')
+}
+
+
+def ignore_httperror(self):
+    """Ignore HTTPErrors raised while requesting metrics."""
+    def wrapper(func):
+        try:
+            return func(self)
+        except requests.HTTPError:
+            return None
+    return wrapper
+
+
+class EthereumCollector:
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.rpc = RPCProvider(host=CLI_ARGS.target_host, port=int(CLI_ARGS.target_port))
+        self.web3 = Web3(self.rpc)
+
+    def collect(self):
+
+        if self.web3:
+            for block_type in BLOCK_TYPE.as_list():
+                self.collect_block_transactions(block_type)
+                self.collect_sync_block(block_type)
+
+            self.collect_gas_price()
+            self.collect_hashrate()
+            self.collect_node_sync_status()
+            self.collect_peers()
+
+        for m in METRICS.values():
+            yield m
+
+    @ignore_httperror
+    def collect_peers(self):
+        """Collect the number of connected peers.
+
+        If the target is a parity client, we also record the number of active peers.
+        """
+        connected = len(self.web3.admin.peers)
+        METRICS['eth_peers'].labels(PEER_STATE.CONNECTED).set(connected)
+        # Parity exposes more granular data, see:
+        #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
+        req = requests.post(f'{CLI_ARGS.target_host}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        active = req.json()['result']['active']
+        METRICS['eth_peers'].labels(PEER_STATE.ACTIVE).set(active)
+
+    @ignore_httperror
+    def collect_hashrate(self):
+        """Collect the hashrate of the node."""
+        hashrate = self.web3.eth.hashrate
+        METRICS['eth_hashrate'].set(hashrate)
+
+    @ignore_httperror
+    def collect_gas_price(self):
+        """Collect the network's current gas price."""
+        gas_price = self.web3.eth.gasPrice
+        METRICS['eth_gas_price'].set(gas_price)
+
+    @ignore_httperror
+    def collect_sync_block(self, block_type):
+        """Collect the ID number of the given `block_type`'s block."""
+        block = self.web3.eth.getBlock(block_identifier=block_type)
+        METRICS[f'eth_sync_block_{block_type}'].set(block)
+
+    @ignore_httperror
+    def collect_block_transactions(self, block_type):
+        """Collect the transaction count of the given `block_type`."""
+        transaction_count = self.web3.eth.getBlockTransactionCount(block_type)
+        METRICS['eth_block_transactions'].labels(block_type).set(transaction_count)
+
+    @ignore_httperror
+    def collect_node_sync_status(self):
+        """Collect the node's sync status.
+
+        we convert the web3 method's result into an integer:
+
+            0: not syncing
+            1: syncing
+        """
+        syncing = int(bool(self.web3.eth.syncing))
+        METRICS['eth_node_sync'].set(syncing)
+
+
+def serve_metrics():
+    start_http_server(int(CLI_ARGS.metrics_port))
+    while True:
+        time.sleep(int(1))
+
+
+if __name__ == '__main__':
+    REGISTRY.register(EthereumCollector())
+    serve_metrics()
