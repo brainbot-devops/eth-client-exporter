@@ -30,8 +30,8 @@ import time
 
 import requests
 
-from prometheus_client import write_to_textfile, start_http_server
-from prometheus_client.core import REGISTRY, Gauge, Enum
+from prometheus_client import start_http_server, REGISTRY
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 
 from web3 import Web3, HTTPProvider
 
@@ -72,17 +72,6 @@ class LABELS:
     BLOCK_TYPE = BLOCK_TYPE
 
 
-METRICS = {
-    'eth_peers': Gauge('eth_peers', 'The number of connected peers.', ['peer_state']),
-    'eth_hashrate': Gauge('eth_hashrate', 'The current hashrate of the network.'),
-    'eth_gas_price': Gauge('eth_gas_price', 'The current gas price of the network.'),
-    'eth_sync_block_earliest': Gauge('eth_sync_block_earliest', 'The block at which import started'),
-    'eth_sync_block_pending': Gauge('eth_sync_block_pending', 'The most recent block'),
-    'eth_sync_block_latest': Gauge('eth_sync_block_latest', 'The estimated highest block.'),
-    'eth_block_transactions': Gauge('eth_block_transactions', 'Number of transactions in a block.', ['block_type']),
-    'eth_node_sync': Enum('eth_node_sync', 'Whether or not the node is syncing.', states=SYNC_STATE.as_list())
-}
-
 
 def ignore_httperror(func):
     """Ignore HTTPErrors raised while requesting metrics."""
@@ -100,21 +89,41 @@ class EthereumCollector:
         super().__init__(*args, **kwargs)
         self.rpc = HTTPProvider(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}')
         self.web3 = Web3(self.rpc)
+        self.metrics = None
 
     def collect(self):
-
+        self.metrics = {
+            'eth_peers': GaugeMetricFamily('eth_peers', 'The number of connected peers.', None, ['peer_state']),
+            'eth_block_transactions': GaugeMetricFamily('eth_block_transactions', 'Number of transactions in a block.', None, ['block_type']),
+            'eth_hashrate': GaugeMetricFamily('eth_hashrate', 'The current hashrate of the network.'),
+            'eth_gas_price': GaugeMetricFamily('eth_gas_price', 'The current gas price of the network.'),
+            'eth_sync_block_earliest': GaugeMetricFamily('eth_sync_block_earliest', 'The block at which import started'),
+            'eth_sync_block_pending': GaugeMetricFamily('eth_sync_block_pending', 'The most recent block'),
+            'eth_sync_block_latest': GaugeMetricFamily('eth_sync_block_latest', 'The estimated highest block.'),
+            'eth_node_syncing': CounterMetricFamily('eth_node_syncing', 'Whether or not the node is syncing.'),
+            'eth_client_version': InfoMetricFamily('eth_client_version', 'Version of the ethereum client.')
+        }
         if self.web3:
-            for block_type in BLOCK_TYPE.as_list():
-                self.collect_block_transactions(block_type)
-                self.collect_sync_block(block_type)
-
-            self.collect_gas_price()
-            self.collect_hashrate()
-            self.collect_node_sync_status()
             self.collect_peers()
+            self.collect_node_sync_status()
+            self.collect_hashrate()
+            self.collect_gas_price()
+            for block_type in BLOCK_TYPE.as_list():
+                self.collect_sync_block(block_type)
+                self.collect_block_transactions(block_type)
+            self.collect_versions()
+        for metric in self.metrics.values():
+            yield metric
 
-        for m in METRICS.values():
-            yield m
+    @ignore_httperror
+    def collect_versions(self):
+        versions = {
+            'web3': self.web3.version.api,
+            'client': self.web3.version.node,
+            'network': self.web3.version.network,
+            'protocol': self.web3.version.ethereum
+        }
+        self.metrics['eth_client_version'].add_metric([], versions)
 
     @ignore_httperror
     def collect_peers(self):
@@ -122,38 +131,40 @@ class EthereumCollector:
 
         If the target is a parity client, we also record the number of active peers.
         """
-        req = requests.post(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        target = f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}'
+        req = requests.post(
+            target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
         peer_count_hex = req.json()['result']
-        METRICS['eth_peers'].labels(PEER_STATE.CONNECTED).set(len(peer_count_hex))
+        self.metrics['eth_peers'].add_metric([PEER_STATE.CONNECTED], len(peer_count_hex))
         # Parity exposes more granular data, see:
         #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
-        req = requests.post(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        req = requests.post(target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
         active = req.json()['result']['active']
-        METRICS['eth_peers'].labels(PEER_STATE.ACTIVE).set(active)
+        self.metrics['eth_peers'].add_metric([PEER_STATE.ACTIVE], active)
 
     @ignore_httperror
     def collect_hashrate(self):
         """Collect the hashrate of the node."""
         hashrate = self.web3.eth.hashrate
-        METRICS['eth_hashrate'].set(hashrate)
+        self.metrics['eth_hashrate'].add_metric([], hashrate)
 
     @ignore_httperror
     def collect_gas_price(self):
         """Collect the network's current gas price."""
         gas_price = self.web3.eth.gasPrice
-        METRICS['eth_gas_price'].set(gas_price)
+        self.metrics['eth_gas_price'].add_metric([], gas_price)
 
     @ignore_httperror
     def collect_sync_block(self, block_type):
         """Collect the ID number of the given `block_type`'s block."""
         block = self.web3.eth.getBlock(block_identifier=block_type)
-        METRICS[f'eth_sync_block_{block_type}'].set(block['number'])
+        self.metrics[f'eth_sync_block_{block_type}'].add_metric([], block['number'])
 
     @ignore_httperror
     def collect_block_transactions(self, block_type):
         """Collect the transaction count of the given `block_type`."""
         transaction_count = self.web3.eth.getBlockTransactionCount(block_type)
-        METRICS['eth_block_transactions'].labels(block_type).set(transaction_count)
+        self.metrics['eth_block_transactions'].add_metric([block_type], transaction_count)
 
     @ignore_httperror
     def collect_node_sync_status(self):
@@ -164,19 +175,15 @@ class EthereumCollector:
             0: not syncing
             1: syncing
         """
-        syncing = bool(self.web3.eth.syncing)
-        if syncing:
-            METRICS['eth_node_sync'].state(SYNC_STATE.SYNCING)
-        else:
-            METRICS['eth_node_sync'].state(SYNC_STATE.NOT_SYNCING)
+        syncing = int(bool(self.web3.eth.syncing))
+        self.metrics['eth_node_syncing'].add_metric([], syncing)
 
 
 def serve_metrics():
-    collector = EthereumCollector()
+    REGISTRY.register(EthereumCollector())
     start_http_server(int(CLI_ARGS.metrics_port))
     while True:
         time.sleep(int(1))
-        collector.collect()
 
 
 if __name__ == '__main__':
