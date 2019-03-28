@@ -6,7 +6,7 @@ import time
 import os
 import sys
 import requests
-from web3 import Web3, RPCProvider
+from web3 import Web3, HTTPProvider
 from prometheus_client import write_to_textfile, start_http_server
 from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily
 
@@ -94,7 +94,7 @@ class EthereumCollector:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.rpc = RPCProvider(host=CLI_ARGS.target_host, port=int(CLI_ARGS.target_port))
+        self.rpc = HTTPProvider(host=CLI_ARGS.target_host, port=int(CLI_ARGS.target_port))
         self.web3 = Web3(self.rpc)
 
     def collect(self):
