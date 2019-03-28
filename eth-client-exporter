@@ -19,6 +19,8 @@ eth_sync_block_pending
 eth_sync_block_earliest
 ------------------------
 eth_sync_block_latest
+------------------------                              -----------
+eth_node_sync                                         Enum
 ========================  ==========================  ===========
 
 """
@@ -29,7 +31,7 @@ import time
 import requests
 
 from prometheus_client import write_to_textfile, start_http_server
-from prometheus_client.core import REGISTRY, GaugeMetricFamily
+from prometheus_client.core import REGISTRY, Gauge, Enum
 
 from web3 import Web3, HTTPProvider
 
@@ -56,20 +58,29 @@ class BLOCK_TYPE:
         return [cls.EARLIEST, cls.PENDING, cls.LATEST]
 
 
+class SYNC_STATE:
+    SYNCING = 'syncing'
+    NOT_SYNCING = 'not syncing'
+
+    @classmethod
+    def as_list(cls):
+        return [cls.SYNCING, cls.NOT_SYNCING]
+
+
 class LABELS:
     PEER_STATE = PEER_STATE
     BLOCK_TYPE = BLOCK_TYPE
 
 
 METRICS = {
-    'eth_peers': GaugeMetricFamily('eth_peers', 'The number of connected peers.', labelnames=['peer_state']),
-    'eth_hashrate': GaugeMetricFamily('eth_hashrate', 'The current hashrate of the network.'),
-    'eth_gas_price': GaugeMetricFamily('eth_gas_price', 'The current gas price of the network.'),
-    'eth_sync_block_earliest': GaugeMetricFamily('eth_sync_block_earliest', 'The block at which import started'),
-    'eth_sync_block_pending': GaugeMetricFamily('eth_sync_block_pending', 'The most recent block'),
-    'eth_sync_block_latest': GaugeMetricFamily('eth_sync_block_latest', 'The estimated highest block.'),
-    'eth_block_transactions': GaugeMetricFamily('eth_block_transactions', 'Number of transactions in a block.', labelnames=['block_type']),
-    'eth_node_sync': GaugeMetricFamily('eth_node_sync', 'Whether or not the node is syncing.')
+    'eth_peers': Gauge('eth_peers', 'The number of connected peers.', ['peer_state']),
+    'eth_hashrate': Gauge('eth_hashrate', 'The current hashrate of the network.'),
+    'eth_gas_price': Gauge('eth_gas_price', 'The current gas price of the network.'),
+    'eth_sync_block_earliest': Gauge('eth_sync_block_earliest', 'The block at which import started'),
+    'eth_sync_block_pending': Gauge('eth_sync_block_pending', 'The most recent block'),
+    'eth_sync_block_latest': Gauge('eth_sync_block_latest', 'The estimated highest block.'),
+    'eth_block_transactions': Gauge('eth_block_transactions', 'Number of transactions in a block.', ['block_type']),
+    'eth_node_sync': Enum('eth_node_sync', 'Whether or not the node is syncing.', states=SYNC_STATE.as_list())
 }
 
 
@@ -152,8 +163,11 @@ class EthereumCollector:
             0: not syncing
             1: syncing
         """
-        syncing = int(bool(self.web3.eth.syncing))
-        METRICS['eth_node_sync'].set(syncing)
+        syncing = bool(self.web3.eth.syncing)
+        if syncing:
+            METRICS['eth_node_sync'].state(SYNC_STATE.SYNCING)
+        else:
+            METRICS['eth_node_sync'].state(SYNC_STATE.NOT_SYNCING)
 
 
 def serve_metrics():
