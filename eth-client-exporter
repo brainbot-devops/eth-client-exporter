@@ -98,7 +98,7 @@ class EthereumCollector:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.rpc = HTTPProvider(host=CLI_ARGS.target_host, port=int(CLI_ARGS.target_port))
+        self.rpc = HTTPProvider(host=CLI_ARGS.target_ip, port=int(CLI_ARGS.target_port))
         self.web3 = Web3(self.rpc)
 
     def collect(self):
@@ -126,7 +126,7 @@ class EthereumCollector:
         METRICS['eth_peers'].labels(PEER_STATE.CONNECTED).set(connected)
         # Parity exposes more granular data, see:
         #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
-        req = requests.post(f'{CLI_ARGS.target_host}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        req = requests.post(f'{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}', json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
         active = req.json()['result']['active']
         METRICS['eth_peers'].labels(PEER_STATE.ACTIVE).set(active)
 
