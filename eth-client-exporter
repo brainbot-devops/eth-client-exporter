@@ -1,35 +1,14 @@
 #!/usr/bin/env python3
+"""Metrics exporter for ethereum clients.
 
-import argparse
-import logging
-import time
-import os
-import sys
-import requests
-from web3 import Web3, HTTPProvider
-from prometheus_client import write_to_textfile, start_http_server
-from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily
+Exposed Metrics:
 
-log = logging.getLogger(__name__)
-logging.basicConfig(stream=sys.stdout, level=os.environ.get("LOGLEVEL", "WARNING"))
-
-settings = {}
-
-parser = argparse.ArgumentParser()
-parser.add_argument('--target-ip', help='Host address of RPC interface to scrape from.', required=True)
-parser.add_argument('--target-port', help='Port of the host.', default=8545)
-parser.add_argument('--interval', help='Scrape interval.', default=1)
-parser.add_argument('--metrics-port', help="The port on which we'll serve our /metrics endpoint", default=9999)
-CLI_ARGS = parser.parse_args()
-
-
-"""
-Metrics Exposition:
-
-========================  ==========================
-Metric Name               Labels
-========================  ==========================  
-eth_peers                 [peer_state]
+========================  ==========================  ===========
+Metric Name               Labels                      Metric Type
+========================  ==========================  ===========
+eth_peers                 [peer_state]                Gauge
+------------------------  --------------------------
+eth_block_transactions    [block_type]
 ------------------------  --------------------------
 eth_hashrate              []
 ------------------------
@@ -40,12 +19,26 @@ eth_sync_block_pending
 eth_sync_block_earliest
 ------------------------
 eth_sync_block_latest
-------------------------  --------------------------
-eth_block_transactions    [block_type]
-------------------------  --------------------------
-
+========================  ==========================  ===========
 
 """
+
+import argparse
+import time
+
+import requests
+
+from prometheus_client import write_to_textfile, start_http_server
+from prometheus_client.core import REGISTRY, GaugeMetricFamily
+
+from web3 import Web3, HTTPProvider
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--target-ip', help='Host address of RPC interface to scrape from.', required=True)
+parser.add_argument('--target-port', help='Port of the host.', default=8545)
+parser.add_argument('--metrics-port', help="The port on which we'll serve our /metrics endpoint", default=9999)
+CLI_ARGS = parser.parse_args()
 
 
 class PEER_STATE:
@@ -72,11 +65,11 @@ METRICS = {
     'eth_peers': GaugeMetricFamily('eth_peers', 'The number of connected peers.', labelnames=['peer_state']),
     'eth_hashrate': GaugeMetricFamily('eth_hashrate', 'The current hashrate of the network.'),
     'eth_gas_price': GaugeMetricFamily('eth_gas_price', 'The current gas price of the network.'),
-    'eth_sync_block_earliest': CounterMetricFamily('eth_sync_block_earliest', 'The block at which import started'),
-    'eth_sync_block_pending': CounterMetricFamily('eth_sync_block_pending', 'The most recent block'),
-    'eth_sync_block_latest': CounterMetricFamily('eth_sync_block_latest', 'The estimated highest block.'),
+    'eth_sync_block_earliest': GaugeMetricFamily('eth_sync_block_earliest', 'The block at which import started'),
+    'eth_sync_block_pending': GaugeMetricFamily('eth_sync_block_pending', 'The most recent block'),
+    'eth_sync_block_latest': GaugeMetricFamily('eth_sync_block_latest', 'The estimated highest block.'),
     'eth_block_transactions': GaugeMetricFamily('eth_block_transactions', 'Number of transactions in a block.', labelnames=['block_type']),
-    'eth_node_sync': CounterMetricFamily('eth_node_sync', 'Whether or not the node is syncing.')
+    'eth_node_sync': GaugeMetricFamily('eth_node_sync', 'Whether or not the node is syncing.')
 }
 
 
