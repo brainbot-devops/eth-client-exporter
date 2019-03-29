@@ -37,11 +37,11 @@ from web3 import Web3, HTTPProvider
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('target-ip', help='Host address of RPC interface to scrape from.')
+parser.add_argument('target', help='Host address of RPC interface to scrape from.')
 parser.add_argument('--target-port', help='Port of the host.', default=8545)
 parser.add_argument('--metrics-port', help="The port on which we'll serve our /metrics endpoint", default=9999)
 CLI_ARGS = parser.parse_args()
-
+print(CLI_ARGS)
 
 class PEER_STATE:
     CONNECTED = 'connected'
@@ -87,7 +87,7 @@ class EthereumCollector:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.rpc = HTTPProvider(f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}')
+        self.rpc = HTTPProvider(f'http://{CLI_ARGS.target}:{CLI_ARGS.target_port}')
         self.web3 = Web3(self.rpc)
         self.metrics = None
 
@@ -131,7 +131,7 @@ class EthereumCollector:
 
         If the target is a parity client, we also record the number of active peers.
         """
-        target = f'http://{CLI_ARGS.target_ip}:{CLI_ARGS.target_port}'
+        target = f'http://{CLI_ARGS.target}:{CLI_ARGS.target_port}'
         req = requests.post(
             target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
         peer_count_hex = req.json()['result']
