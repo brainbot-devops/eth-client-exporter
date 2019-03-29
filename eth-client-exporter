@@ -98,7 +98,7 @@ class EthereumCollector:
 
     def collect(self):
         self.metrics = {
-            'eth_peers': GaugeMetricFamily('eth_peers', 'The number of connected peers.', None, ['peer_state']),
+            'eth_peers': GaugeMetricFamily('eth_peers', 'The number of connected peers.'),
             'eth_block_transactions': GaugeMetricFamily('eth_block_transactions', 'Number of transactions in a block.', None, ['block_type']),
             'eth_hashrate': GaugeMetricFamily('eth_hashrate', 'The current hashrate of the network.'),
             'eth_gas_price': GaugeMetricFamily('eth_gas_price', 'The current gas price of the network.'),
@@ -136,24 +136,7 @@ class EthereumCollector:
 
         If the target is a parity client, we also record the number of active peers.
         """
-        target = f'http://{CLI_ARGS.target}:{CLI_ARGS.target_port}'
-        req = requests.post(
-            target, json={"method":"net_peerCount","params":[],"id":1,"jsonrpc":"2.0"}, timeout=2)
-        peer_count_hex = req.json()
-        if 'result' in peer_count_hex:
-            peer_count_hex = peer_count_hex['result']
-        self.metrics['eth_peers'].add_metric([PEER_STATE.CONNECTED], len(peer_count_hex))
-        # Parity exposes more granular data, see:
-        #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
-        req = requests.post(target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"}, timeout=2)
-        resp_data = req.json()
-        if 'error' in  resp_data:
-            raise requests.HTTPError(resp_data)
-        if 'result' in resp_data:
-            active = req.json()['result']['active']
-        else:
-            active = req.json()['active']
-        self.metrics['eth_peers'].add_metric([PEER_STATE.ACTIVE], active)
+        self.metrics['eth_peers'].add_metric([], self.web3.net.peerCount)
 
     @error_handling
     def collect_hashrate(self):
