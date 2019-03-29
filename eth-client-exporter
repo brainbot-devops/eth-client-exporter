@@ -73,12 +73,16 @@ class LABELS:
 
 
 
-def ignore_httperror(func):
-    """Ignore HTTPErrors raised while requesting metrics."""
+def error_handling(func):
+    """Ignore certain errors raised while requesting metrics."""
     def wrapper(*args):
         try:
             return func(*args)
         except requests.HTTPError:
+            # The node is not reachable.
+            return None
+        except web3.exceptions.ValidationError:
+            # We're connected to a POA chain, the metric isnt available here.
             return None
     return wrapper
 
@@ -115,7 +119,7 @@ class EthereumCollector:
         for metric in self.metrics.values():
             yield metric
 
-    @ignore_httperror
+    @error_handling
     def collect_versions(self):
         versions = {
             'web3': self.web3.version.api,
@@ -125,7 +129,7 @@ class EthereumCollector:
         }
         self.metrics['eth_client_version'].add_metric([], versions)
 
-    @ignore_httperror
+    @error_handling
     def collect_peers(self):
         """Collect the number of connected peers.
 
@@ -150,31 +154,31 @@ class EthereumCollector:
             active = req.json()['active']
         self.metrics['eth_peers'].add_metric([PEER_STATE.ACTIVE], active)
 
-    @ignore_httperror
+    @error_handling
     def collect_hashrate(self):
         """Collect the hashrate of the node."""
         hashrate = self.web3.eth.hashrate
         self.metrics['eth_hashrate'].add_metric([], hashrate)
 
-    @ignore_httperror
+    @error_handling
     def collect_gas_price(self):
         """Collect the network's current gas price."""
         gas_price = self.web3.eth.gasPrice
         self.metrics['eth_gas_price'].add_metric([], gas_price)
 
-    @ignore_httperror
+    @error_handling
     def collect_sync_block(self, block_type):
         """Collect the ID number of the given `block_type`'s block."""
         block = self.web3.eth.getBlock(block_identifier=block_type)
         self.metrics[f'eth_sync_block_{block_type}'].add_metric([], block['number'])
 
-    @ignore_httperror
+    @error_handling
     def collect_block_transactions(self, block_type):
         """Collect the transaction count of the given `block_type`."""
         transaction_count = self.web3.eth.getBlockTransactionCount(block_type)
         self.metrics['eth_block_transactions'].add_metric([block_type], transaction_count)
 
-    @ignore_httperror
+    @error_handling
     def collect_node_sync_status(self):
         """Collect the node's sync status.
 
