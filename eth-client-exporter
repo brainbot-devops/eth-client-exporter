@@ -79,7 +79,7 @@ def error_handling(func):
     def wrapper(*args):
         try:
             return func(*args)
-        except requests.HTTPError:
+        except requests.RequestException:
             # The node is not reachable.
             return None
         except ValidationError:
@@ -138,14 +138,14 @@ class EthereumCollector:
         """
         target = f'http://{CLI_ARGS.target}:{CLI_ARGS.target_port}'
         req = requests.post(
-            target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+            target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"}, timeout=2)
         peer_count_hex = req.json()
         if 'result' in peer_count_hex:
             peer_count_hex = peer_count_hex['result']
         self.metrics['eth_peers'].add_metric([PEER_STATE.CONNECTED], len(peer_count_hex))
         # Parity exposes more granular data, see:
         #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
-        req = requests.post(target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
+        req = requests.post(target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"}, timeout=2)
         resp_data = req.json()
         if 'error' in  resp_data:
             raise requests.HTTPError(resp_data)
