@@ -141,7 +141,13 @@ class EthereumCollector:
         # Parity exposes more granular data, see:
         #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
         req = requests.post(target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
-        active = req.json()['result']['active']
+        resp_data = req.json()
+        if 'error' in  resp_data:
+            raise requests.HTTPError(resp_data)
+        if 'result' in resp_data:
+            active = req.json()['result']['active']
+        else:
+            active = req.json()['active']
         self.metrics['eth_peers'].add_metric([PEER_STATE.ACTIVE], active)
 
     @ignore_httperror
