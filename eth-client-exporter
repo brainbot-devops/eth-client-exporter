@@ -138,7 +138,7 @@ class EthereumCollector:
         """
         target = f'http://{CLI_ARGS.target}:{CLI_ARGS.target_port}'
         req = requests.post(
-            target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"}, timeout=2)
+            target, json={"method":"net_peerCount","params":[],"id":1,"jsonrpc":"2.0"}, timeout=2)
         peer_count_hex = req.json()
         if 'result' in peer_count_hex:
             peer_count_hex = peer_count_hex['result']
