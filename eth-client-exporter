@@ -37,7 +37,7 @@ from web3 import Web3, HTTPProvider
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--target-ip', help='Host address of RPC interface to scrape from.', required=True)
+parser.add_argument('target-ip', help='Host address of RPC interface to scrape from.')
 parser.add_argument('--target-port', help='Port of the host.', default=8545)
 parser.add_argument('--metrics-port', help="The port on which we'll serve our /metrics endpoint", default=9999)
 CLI_ARGS = parser.parse_args()
