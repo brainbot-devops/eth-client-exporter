@@ -134,7 +134,9 @@ class EthereumCollector:
         target = f'http://{CLI_ARGS.target}:{CLI_ARGS.target_port}'
         req = requests.post(
             target, json={"method":"parity_netPeers","params":[],"id":1,"jsonrpc":"2.0"})
-        peer_count_hex = req.json()['result']
+        peer_count_hex = req.json()
+        if 'result' in peer_count_hex:
+            peer_count_hex = peer_count_hex['result']
         self.metrics['eth_peers'].add_metric([PEER_STATE.CONNECTED], len(peer_count_hex))
         # Parity exposes more granular data, see:
         #   https://wiki.parity.io/JSONRPC-parity-module#parity_netpeers
