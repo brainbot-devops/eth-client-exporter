@@ -34,6 +34,7 @@ from prometheus_client import start_http_server, REGISTRY
 from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 
 from web3 import Web3, HTTPProvider
+from web3.exceptions import ValidationError
 
 
 parser = argparse.ArgumentParser()
@@ -81,7 +82,7 @@ def error_handling(func):
         except requests.HTTPError:
             # The node is not reachable.
             return None
-        except web3.exceptions.ValidationError:
+        except ValidationError:
             # We're connected to a POA chain, the metric isnt available here.
             return None
     return wrapper
