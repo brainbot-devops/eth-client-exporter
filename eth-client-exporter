@@ -128,7 +128,7 @@ class EthereumCollector:
             'connected_network': self.web3.version.network,
             'ethereum_protocol': self.web3.version.ethereum
         }
-        self.metrics['eth_client_version'].add_metric([], versions)
+        self.metrics['eth_client_info'].add_metric([], versions)
 
     @error_handling
     def collect_peers(self):
