@@ -106,7 +106,7 @@ class EthereumCollector:
             'eth_sync_block_pending': GaugeMetricFamily('eth_sync_block_pending', 'The most recent block'),
             'eth_sync_block_latest': GaugeMetricFamily('eth_sync_block_latest', 'The estimated highest block.'),
             'eth_node_syncing': CounterMetricFamily('eth_node_syncing', 'Whether or not the node is syncing.'),
-            'eth_client_version': InfoMetricFamily('eth_client_version', 'Version of the ethereum client.')
+            'eth_client_info': InfoMetricFamily('eth_client_info', 'Meta info of the Ethereum client.')
         }
         if self.web3:
             self.collect_peers()
@@ -123,10 +123,10 @@ class EthereumCollector:
     @error_handling
     def collect_versions(self):
         versions = {
-            'web3': self.web3.version.api,
-            'client': self.web3.version.node,
-            'network': self.web3.version.network,
-            'protocol': self.web3.version.ethereum
+            'web3_version': self.web3.version.api,
+            'client_version': self.web3.version.node,
+            'connected_network': self.web3.version.network,
+            'ethereum_protocol': self.web3.version.ethereum
         }
         self.metrics['eth_client_version'].add_metric([], versions)
 
